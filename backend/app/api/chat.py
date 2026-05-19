@@ -115,76 +115,7 @@ async def widget_chat(
     return StreamingResponse(stream(), media_type="text/event-stream")
 
 
-# === Admin / Logged-in User Chat ===
-
-@router.post("/{conversation_id}")
-async def chat_with_auth(
-    conversation_id: str,
-    req: ChatRequest,
-    request: Request,
-    user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    result = await db.execute(
-        select(Conversation).where(
-            Conversation.id == conversation_id,
-            Conversation.user_id == user["user_id"],
-        )
-    )
-    conv = result.scalar_one_or_none()
-    if not conv:
-        raise HTTPException(status_code=404, detail="对话不存在")
-
-    user_msg = Message(conversation_id=conversation_id, role="user", content=req.query)
-    db.add(user_msg)
-    await db.commit()
-
-    menu_cards = await _fetch_menu_cards(db, req.query)
-
-    async def stream():
-        full_answer = ""
-        sources = []
-        menu_cards_data = []
-        steps_data = []
-
-        async for chunk in generate_chat_stream(
-            query=req.query,
-            menu_cards=menu_cards,
-            user_id=user["user_id"],
-            document_ids=req.document_ids,
-        ):
-            yield chunk
-            data = json.loads(chunk.removeprefix("data: "))
-            if data.get("type") == "text":
-                full_answer += data.get("content", "")
-            elif data.get("type") == "sources":
-                sources = data.get("sources", [])
-            elif data.get("type") == "menu_cards":
-                menu_cards_data = data.get("menu_cards", data if isinstance(data, list) else [])
-            elif data.get("type") == "steps":
-                steps_data = data.get("steps", [])
-
-        assistant_msg = Message(
-            conversation_id=conversation_id,
-            role="assistant",
-            content=full_answer,
-            sources=json.dumps(sources, ensure_ascii=False),
-            menu_cards=json.dumps(menu_cards_data, ensure_ascii=False),
-            steps=json.dumps(steps_data, ensure_ascii=False),
-        )
-        db.add(assistant_msg)
-        await db.commit()
-
-        await log_event(
-            db, "chat", "ask", user_id=user["user_id"],
-            resource_type="conversation", resource_id=conversation_id,
-            detail=req.query[:200],
-        )
-
-    return StreamingResponse(stream(), media_type="text/event-stream")
-
-
-# === Conversations ===
+# === Conversations (must come BEFORE /{conversation_id}) ===
 
 @router.get("/conversations")
 async def list_conversations(
@@ -206,15 +137,13 @@ async def list_conversations(
     }
 
 
-from pydantic import BaseModel
-
 @router.post("/conversations")
 async def create_conversation(
-    body: CreateConvBody,
+    title: str = "新对话",
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    conv = Conversation(user_id=user["user_id"], title=body.title)
+    conv = Conversation(user_id=user["user_id"], title=title)
     db.add(conv)
     await db.commit()
     await db.refresh(conv)
@@ -293,6 +222,75 @@ async def submit_feedback(
         detail=f"Feedback: {req.feedback}",
     )
     return {"message": "反馈已记录"}
+
+
+# === Admin / Logged-in User Chat ===
+
+@router.post("/{conversation_id}")
+async def chat_with_auth(
+    conversation_id: str,
+    req: ChatRequest,
+    request: Request,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Conversation).where(
+            Conversation.id == conversation_id,
+            Conversation.user_id == user["user_id"],
+        )
+    )
+    conv = result.scalar_one_or_none()
+    if not conv:
+        raise HTTPException(status_code=404, detail="对话不存在")
+
+    user_msg = Message(conversation_id=conversation_id, role="user", content=req.query)
+    db.add(user_msg)
+    await db.commit()
+
+    menu_cards = await _fetch_menu_cards(db, req.query)
+
+    async def stream():
+        full_answer = ""
+        sources = []
+        menu_cards_data = []
+        steps_data = []
+
+        async for chunk in generate_chat_stream(
+            query=req.query,
+            menu_cards=menu_cards,
+            user_id=user["user_id"],
+            document_ids=req.document_ids,
+        ):
+            yield chunk
+            data = json.loads(chunk.removeprefix("data: "))
+            if data.get("type") == "text":
+                full_answer += data.get("content", "")
+            elif data.get("type") == "sources":
+                sources = data.get("sources", [])
+            elif data.get("type") == "menu_cards":
+                menu_cards_data = data.get("menu_cards", data if isinstance(data, list) else [])
+            elif data.get("type") == "steps":
+                steps_data = data.get("steps", [])
+
+        assistant_msg = Message(
+            conversation_id=conversation_id,
+            role="assistant",
+            content=full_answer,
+            sources=json.dumps(sources, ensure_ascii=False),
+            menu_cards=json.dumps(menu_cards_data, ensure_ascii=False),
+            steps=json.dumps(steps_data, ensure_ascii=False),
+        )
+        db.add(assistant_msg)
+        await db.commit()
+
+        await log_event(
+            db, "chat", "ask", user_id=user["user_id"],
+            resource_type="conversation", resource_id=conversation_id,
+            detail=req.query[:200],
+        )
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
 
 
 # === Helpers ===
