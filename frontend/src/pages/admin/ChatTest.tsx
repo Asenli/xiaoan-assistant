@@ -214,7 +214,7 @@ export default function ChatTest() {
                   <div style={{ marginTop: 8 }}>
                     <FileTextOutlined style={{ fontSize: 12, color: '#999' }} />
                     <Typography.Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>
-                      来源：{streamSources.map((s) => s.document_name).join(', ')}
+                      来源：{[...new Set(streamSources.map((s) => s.document_name))].join(', ')}
                     </Typography.Text>
                   </div>
                 )}

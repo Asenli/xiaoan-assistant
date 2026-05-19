@@ -226,7 +226,7 @@ export default function ChatWidget() {
                 <div style={{ marginTop: 4 }}>
                   <FileTextOutlined style={{ fontSize: 11, color: '#999' }} />
                   <Typography.Text type="secondary" style={{ fontSize: 10, marginLeft: 4 }}>
-                    {streamSources.map((s) => s.document_name).join(', ')}
+                    {[...new Set(streamSources.map((s) => s.document_name))].join(', ')}
                   </Typography.Text>
                 </div>
               )}

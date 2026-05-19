@@ -98,7 +98,10 @@ export default function ChatBubble({ message, onMenuNavigate, baseUrl }: Props) 
             <Space size={4} wrap>
               <FileTextOutlined style={{ fontSize: 12, color: '#999' }} />
               <Typography.Text type="secondary" style={{ fontSize: 11 }}>来源：</Typography.Text>
-              {sources.slice(0, 5).map((s, i) => (
+              {sources
+                .filter((s, i, arr) => i === arr.findIndex((t) => t.document_name === s.document_name))
+                .slice(0, 5)
+                .map((s, i) => (
                 <Tag key={i} color="default" style={{ fontSize: 10, margin: 0 }}>
                   {s.document_name}
                 </Tag>
